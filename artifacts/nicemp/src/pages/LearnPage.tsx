@@ -1,20 +1,25 @@
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { Search } from "lucide-react";
 import { Link } from "wouter";
 import { AppLayout, PageContainer, PageHeader } from "@/components/ds/AppLayout";
 import { Badge } from "@/components/ui/badge";
-import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
-import { loadPosts, loadCategories } from "@/lib/cms-storage";
+import { loadPosts, loadCategories, type Post } from "@/lib/cms-storage";
+import { apiFetchPosts, apiFetchCategories } from "@/lib/cms-api";
 
 export function LearnPage() {
-  const allPosts = loadPosts();
-  const categories = loadCategories();
-  const publishedPosts = allPosts.filter((p) => p.status === "Publicado");
-
+  const [allPosts, setAllPosts] = useState<Post[]>(() => loadPosts());
+  const [categories, setCategories] = useState<string[]>(() => loadCategories());
   const [search, setSearch] = useState("");
   const [activeCategory, setActiveCategory] = useState<string | null>(null);
+
+  useEffect(() => {
+    apiFetchPosts().then(setAllPosts).catch(() => {});
+    apiFetchCategories().then(setCategories).catch(() => {});
+  }, []);
+
+  const publishedPosts = allPosts.filter((p) => p.status === "Publicado");
 
   const filtered = publishedPosts.filter((post) => {
     const matchCat = !activeCategory || post.category === activeCategory;

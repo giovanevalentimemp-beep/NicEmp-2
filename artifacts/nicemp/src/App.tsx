@@ -4,6 +4,7 @@ import { Toaster } from "@/components/ui/toaster";
 import { TooltipProvider } from "@/components/ui/tooltip";
 import { AuthProvider } from "@/hooks/use-auth";
 import { ProtectedRoute } from "@/components/auth/ProtectedRoute";
+import { CookieBanner } from "@/components/CookieBanner";
 
 import { HeroSection } from "@/components/HeroSection";
 import { ToolsSection } from "@/components/ToolsSection";
@@ -27,6 +28,8 @@ import { SimplesNacionalCalculator } from "@/pages/SimplesNacionalCalculator";
 import { ToolsHome } from "@/pages/ToolsHome";
 import { LearnPage } from "@/pages/LearnPage";
 import { ArticlePage } from "@/pages/ArticlePage";
+import { PrivacyPage } from "@/pages/PrivacyPage";
+import { TermsPage } from "@/pages/TermsPage";
 import { NotFound } from "@/pages/not-found";
 
 const queryClient = new QueryClient();
@@ -67,6 +70,9 @@ function Router() {
         <ArticlePage />
       </Route>
 
+      <Route path="/politica-de-privacidade" component={PrivacyPage} />
+      <Route path="/termos-de-uso" component={TermsPage} />
+
       <Route path="/gerencie">
         <ProtectedRoute><DashboardPage /></ProtectedRoute>
       </Route>
@@ -93,6 +99,7 @@ function App() {
         <AuthProvider>
           <WouterRouter base={import.meta.env.BASE_URL.replace(/\/$/, "")}>
             <Router />
+            <CookieBanner />
           </WouterRouter>
         </AuthProvider>
         <Toaster />

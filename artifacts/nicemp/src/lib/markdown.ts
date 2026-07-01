@@ -2,7 +2,6 @@ export function renderMarkdown(md: string): string {
   if (!md) return "";
 
   let html = md
-    // Escape HTML
     .replace(/&/g, "&amp;")
     .replace(/</g, "&lt;")
     .replace(/>/g, "&gt;");
@@ -20,6 +19,13 @@ export function renderMarkdown(md: string): string {
   html = html.replace(/^### (.+)$/gm, "<h3>$1</h3>");
   html = html.replace(/^## (.+)$/gm, "<h2>$1</h2>");
   html = html.replace(/^# (.+)$/gm, "<h1>$1</h1>");
+
+  // Images (must come before links to avoid conflict)
+  html = html.replace(
+    /!\[([^\]]*)\]\(([^)]+)\)/g,
+    (_, alt, src) =>
+      `<figure class="article-figure"><img src="${src}" alt="${alt}" class="article-img" />${alt ? `<figcaption>${alt}</figcaption>` : ""}</figure>`
+  );
 
   // Bold + italic
   html = html.replace(/\*\*\*(.+?)\*\*\*/g, "<strong><em>$1</em></strong>");
@@ -53,13 +59,13 @@ export function renderMarkdown(md: string): string {
     return `<ol>${items}</ol>`;
   });
 
-  // Paragraphs (lines not already inside block elements)
+  // Paragraphs
   html = html
     .split(/\n{2,}/)
     .map((block) => {
       const trimmed = block.trim();
       if (!trimmed) return "";
-      if (/^<(h[1-6]|ul|ol|li|pre|blockquote|hr)/.test(trimmed)) return trimmed;
+      if (/^<(h[1-6]|ul|ol|li|pre|blockquote|hr|figure)/.test(trimmed)) return trimmed;
       return `<p>${trimmed.replace(/\n/g, "<br />")}</p>`;
     })
     .join("\n");

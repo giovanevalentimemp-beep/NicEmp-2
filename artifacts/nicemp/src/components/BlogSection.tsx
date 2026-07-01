@@ -1,10 +1,20 @@
+import { useState, useEffect } from "react";
 import { ArrowRight, Clock, Calendar } from "lucide-react";
 import { motion } from "framer-motion";
-import { loadPosts } from "@/lib/cms-storage";
+import { loadPosts, type Post } from "@/lib/cms-storage";
+import { apiFetchPosts } from "@/lib/cms-api";
 
 export function BlogSection() {
-  const allPosts = loadPosts();
-  const published = allPosts.filter((p) => p.status === "Publicado");
+  const [published, setPublished] = useState<Post[]>(() =>
+    loadPosts().filter((p) => p.status === "Publicado")
+  );
+
+  useEffect(() => {
+    apiFetchPosts()
+      .then((posts) => setPublished(posts.filter((p) => p.status === "Publicado")))
+      .catch(() => {});
+  }, []);
+
   const featured = published[0];
   const recent = published.slice(1, 4);
 
@@ -34,7 +44,6 @@ export function BlogSection() {
           </div>
         ) : (
           <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
-            {/* Cover / placeholder */}
             <motion.div
               initial={{ opacity: 0, y: 16 }}
               whileInView={{ opacity: 1, y: 0 }}
@@ -59,7 +68,6 @@ export function BlogSection() {
               )}
             </motion.div>
 
-            {/* Featured article */}
             {featured && (
               <motion.a
                 href={`/aprenda/${featured.slug}`}
@@ -100,7 +108,6 @@ export function BlogSection() {
               </motion.a>
             )}
 
-            {/* Recent small articles */}
             <motion.div
               initial={{ opacity: 0, y: 16 }}
               whileInView={{ opacity: 1, y: 0 }}

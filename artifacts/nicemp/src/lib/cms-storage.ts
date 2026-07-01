@@ -24,7 +24,7 @@ export interface Post {
 const KEY = "nicemp_cms_posts_v1";
 const CAT_KEY = "nicemp_cms_categories_v1";
 
-const SEED_CATEGORIES = ["Financas", "Impostos", "Gestao", "Vendas"];
+const SEED_CATEGORIES = ["Finanças", "Impostos", "Gestão", "Vendas"];
 
 const SEED: Post[] = [
   {
@@ -32,35 +32,13 @@ const SEED: Post[] = [
     title: "Como calcular ROI",
     subtitle: "Entenda retorno, lucro e decisão de investimento.",
     slug: "como-calcular-roi",
-    category: "Financas",
+    category: "Finanças",
     status: "Publicado",
     tags: ["roi", "indicadores"],
     metaTitle: "Como calcular ROI | NICEMP",
     metaDescription: "Aprenda a calcular ROI e interpretar o retorno sobre investimento.",
     excerpt: "Aprenda a calcular o retorno sobre investimento do seu negócio.",
-    content: `## O que é ROI?
-
-ROI (Return on Investment) é uma métrica financeira que mede o retorno obtido em relação ao investimento realizado.
-
-## Fórmula
-
-\`\`\`
-ROI (%) = ((Retorno - Investimento) ÷ Investimento) × 100
-\`\`\`
-
-## Exemplo prático
-
-Se você investiu R$ 1.000 e obteve R$ 1.500 de retorno:
-
-- Lucro = R$ 1.500 − R$ 1.000 = R$ 500
-- ROI = (500 ÷ 1.000) × 100 = **50%**
-
-## Interpretação
-
-- ROI > 50% → Excelente
-- ROI entre 20% e 50% → Bom
-- ROI < 20% → Baixo
-- ROI negativo → Prejuízo`,
+    content: `## O que é ROI?\n\nROI (Return on Investment) é uma métrica financeira que mede o retorno obtido em relação ao investimento realizado.\n\n## Fórmula\n\n\`\`\`\nROI (%) = ((Retorno - Investimento) ÷ Investimento) × 100\n\`\`\`\n\n## Exemplo prático\n\nSe você investiu R$ 1.000 e obteve R$ 1.500 de retorno:\n\n- Lucro = R$ 1.500 − R$ 1.000 = R$ 500\n- ROI = (500 ÷ 1.000) × 100 = **50%**`,
     coverImage: "",
     videoYoutube: "",
     readingTime: "5 min",
@@ -80,27 +58,7 @@ Se você investiu R$ 1.000 e obteve R$ 1.500 de retorno:
     metaTitle: "MEI ou Simples Nacional | NICEMP",
     metaDescription: "Veja diferenças entre MEI e Simples Nacional para pequenas empresas.",
     excerpt: "Descubra qual regime tributário pode fazer mais sentido.",
-    content: `## MEI x Simples Nacional
-
-A escolha entre MEI e Simples Nacional depende do faturamento, da atividade e da estrutura da empresa.
-
-## MEI
-
-- Limite de faturamento: R$ 81.000/ano
-- Impostos fixos mensais (DAS-MEI)
-- Não pode ter sócios
-- Limitado a certas atividades
-
-## Simples Nacional
-
-- Limite de faturamento: R$ 4.800.000/ano
-- Alíquotas variáveis por faixa e anexo
-- Pode ter sócios
-- Abrange mais atividades
-
-## Quando migrar para o Simples?
-
-Se o seu faturamento anual se aproximar de R$ 81.000, é o momento de avaliar a migração. O Simples Nacional oferece mais flexibilidade e capacidade de crescimento.`,
+    content: `## MEI x Simples Nacional\n\nA escolha entre MEI e Simples Nacional depende do faturamento, da atividade e da estrutura da empresa.`,
     coverImage: "",
     videoYoutube: "",
     readingTime: "7 min",
@@ -109,27 +67,22 @@ Se o seu faturamento anual se aproximar de R$ 81.000, é o momento de avaliar a 
     updatedAt: new Date().toISOString(),
     publishedAt: new Date().toISOString(),
   },
-  {
-    id: "3",
-    title: "Como precificar produtos",
-    subtitle: "Use markup e margem com mais clareza.",
-    slug: "como-precificar-produtos",
-    category: "Vendas",
-    status: "Rascunho",
-    tags: ["markup", "preco"],
-    metaTitle: "Como precificar produtos | NICEMP",
-    metaDescription: "Aprenda a calcular preço de venda com custos, despesas e margem.",
-    excerpt: "Calcule margem de lucro e markup sem complicação.",
-    content: "",
-    coverImage: "",
-    videoYoutube: "",
-    readingTime: "6 min",
-    scheduledAt: "",
-    createdAt: new Date().toISOString(),
-    updatedAt: new Date().toISOString(),
-    publishedAt: "",
-  },
 ];
+
+// ─── Auto-publish scheduled posts ─────────────────────────────────────────────
+
+function autoPublish(posts: Post[]): { posts: Post[]; changed: boolean } {
+  const now = new Date().toISOString();
+  let changed = false;
+  const updated = posts.map((p) => {
+    if (p.status === "Agendado" && p.scheduledAt && p.scheduledAt <= now) {
+      changed = true;
+      return { ...p, status: "Publicado" as PostStatus, publishedAt: p.scheduledAt, updatedAt: now };
+    }
+    return p;
+  });
+  return { posts: updated, changed };
+}
 
 // ─── Posts ────────────────────────────────────────────────────────────────────
 
@@ -151,15 +104,18 @@ function persist(posts: Post[]): void {
 }
 
 export function loadPosts(): Post[] {
-  return loadRaw();
+  const raw = loadRaw();
+  const { posts, changed } = autoPublish(raw);
+  if (changed) persist(posts);
+  return posts;
 }
 
 export function getPost(id: string): Post | undefined {
-  return loadRaw().find((p) => p.id === id);
+  return loadPosts().find((p) => p.id === id);
 }
 
 export function getPostBySlug(slug: string): Post | undefined {
-  return loadRaw().find((p) => p.slug === slug);
+  return loadPosts().find((p) => p.slug === slug);
 }
 
 export function savePost(post: Post): Post[] {
@@ -228,4 +184,19 @@ export function loadCategories(): string[] {
 
 export function saveCategories(cats: string[]): void {
   localStorage.setItem(CAT_KEY, JSON.stringify(cats));
+}
+
+export function addCategory(name: string): string[] {
+  const cats = loadCategories();
+  const trimmed = name.trim();
+  if (!trimmed || cats.includes(trimmed)) return cats;
+  const updated = [...cats, trimmed];
+  saveCategories(updated);
+  return updated;
+}
+
+export function removeCategory(name: string): string[] {
+  const updated = loadCategories().filter((c) => c !== name);
+  saveCategories(updated);
+  return updated;
 }

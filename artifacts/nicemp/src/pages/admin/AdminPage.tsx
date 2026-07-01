@@ -1,4 +1,4 @@
-import { useState, useCallback, useEffect } from "react";
+import { useState, useCallback, useEffect, useRef } from "react";
 import {
   ArrowLeft, Building2, Calculator, ChevronDown, ChevronRight,
   DollarSign, FileText, Image, Newspaper, Plus, RotateCcw,
@@ -20,10 +20,14 @@ import {
 } from "@/lib/tool-settings";
 import type { Faixa } from "@/lib/simples-nacional/types";
 import {
-  loadPosts, savePost, deletePost, newPost, slugify,
-  loadCategories, saveCategories,
+  loadPosts, savePost, deletePost as localDeletePost, newPost, slugify,
+  loadCategories, addCategory, removeCategory,
   type Post, type PostStatus,
 } from "@/lib/cms-storage";
+import {
+  apiFetchPosts, apiSavePost, apiDeletePost,
+  apiFetchCategories, apiAddCategory, apiDeleteCategory,
+} from "@/lib/cms-api";
 
 // ─── Tool settings helpers ────────────────────────────────────────────────────
 
@@ -247,6 +251,65 @@ function ToolConfigPanel({ toolKey, settings, onChange }: { toolKey: Exclude<Too
   return null;
 }
 
+// ─── Category Manager ─────────────────────────────────────────────────────────
+
+function CategoryManager({ categories, onAdd, onRemove }: {
+  categories: string[];
+  onAdd: (name: string) => void;
+  onRemove: (name: string) => void;
+}) {
+  const [newName, setNewName] = useState("");
+
+  function handleAdd() {
+    const trimmed = newName.trim();
+    if (!trimmed || categories.includes(trimmed)) return;
+    onAdd(trimmed);
+    setNewName("");
+  }
+
+  return (
+    <Card className="rounded-xl border-slate-200 shadow-sm">
+      <CardHeader className="flex-row items-center justify-between pb-4">
+        <CardTitle className="flex items-center gap-2"><Tags size={18} /> Categorias</CardTitle>
+      </CardHeader>
+      <CardContent>
+        <div className="flex gap-2 mb-4">
+          <Input
+            className="h-9"
+            placeholder="Nome da nova categoria..."
+            value={newName}
+            onChange={(e) => setNewName(e.target.value)}
+            onKeyDown={(e) => e.key === "Enter" && handleAdd()}
+          />
+          <Button size="sm" onClick={handleAdd} disabled={!newName.trim()}>
+            <Plus className="h-4 w-4" /> Adicionar
+          </Button>
+        </div>
+        {categories.length === 0 ? (
+          <p className="text-sm text-slate-400 text-center py-4">Nenhuma categoria criada.</p>
+        ) : (
+          <div className="flex flex-wrap gap-2">
+            {categories.map((cat) => (
+              <span key={cat} className="inline-flex items-center gap-1.5 rounded-full px-3 py-1 text-sm font-medium bg-slate-100 text-slate-700">
+                {cat}
+                <button
+                  type="button"
+                  onClick={() => {
+                    if (confirm(`Remover categoria "${cat}"?`)) onRemove(cat);
+                  }}
+                  className="text-slate-400 hover:text-red-500 transition-colors"
+                >
+                  <X size={12} />
+                </button>
+              </span>
+            ))}
+          </div>
+        )}
+      </CardContent>
+    </Card>
+  );
+}
+
 // ─── CMS ─────────────────────────────────────────────────────────────────────
 
 const STATUS_STYLES: Record<PostStatus, { bg: string; color: string; label: string; icon: React.ReactNode }> = {
@@ -264,30 +327,34 @@ function StatusBadge({ status }: { status: PostStatus }) {
   );
 }
 
-function FormField({ label, required, children }: { label: string; required?: boolean; children: React.ReactNode }) {
+function FormField({ label, required, hint, children }: { label: string; required?: boolean; hint?: string; children: React.ReactNode }) {
   return (
     <div className="flex flex-col gap-1.5">
       <label className="text-xs font-semibold text-slate-700 uppercase tracking-wide">
         {label} {required && <span className="text-red-500">*</span>}
       </label>
       {children}
+      {hint && <p className="text-xs text-slate-400">{hint}</p>}
     </div>
   );
 }
 
 interface PostEditorProps {
   initial: Post | null;
+  categories: string[];
   onSaved: (posts: Post[]) => void;
   onCancel: () => void;
+  onAddCategory: (name: string) => void;
 }
 
-function PostEditor({ initial, onSaved, onCancel }: PostEditorProps) {
+function PostEditor({ initial, categories, onSaved, onCancel, onAddCategory }: PostEditorProps) {
   const isNew = !initial?.id || initial.id === "";
   const [post, setPost] = useState<Post>(initial ?? newPost());
   const [notice, setNotice] = useState<{ type: "ok" | "err"; msg: string } | null>(null);
   const [scheduleModal, setScheduleModal] = useState(false);
   const [scheduleDate, setScheduleDate] = useState(post.scheduledAt ? post.scheduledAt.slice(0, 16) : "");
-  const categories = loadCategories();
+  const [newCatName, setNewCatName] = useState("");
+  const [showNewCat, setShowNewCat] = useState(false);
 
   const set = (field: keyof Post, value: string) =>
     setPost((p) => ({ ...p, [field]: value }));
@@ -308,20 +375,24 @@ function PostEditor({ initial, onSaved, onCancel }: PostEditorProps) {
     return null;
   }
 
-  function doSave(status: PostStatus, scheduledAt?: string) {
+  async function doSave(status: PostStatus, scheduledAt?: string) {
     const err = validate();
     if (err) { setNotice({ type: "err", msg: err }); return; }
+    const wordCount = post.content.trim().split(/\s+/).filter(Boolean).length;
+    const readingTime = `${Math.max(1, Math.round(wordCount / 200))} min`;
     const toSave: Post = {
       ...post,
       status,
+      readingTime,
       scheduledAt: scheduledAt ?? (status === "Agendado" ? post.scheduledAt : ""),
       publishedAt: status === "Publicado" ? (post.publishedAt || new Date().toISOString()) : post.publishedAt,
     };
-    const updated = savePost(toSave);
+    const updatedLocal = savePost(toSave);
     setPost(toSave);
+    try { await apiSavePost(toSave); } catch { /* localStorage is fallback */ }
     setNotice({ type: "ok", msg: status === "Publicado" ? "Artigo publicado!" : status === "Agendado" ? "Artigo agendado!" : "Rascunho salvo!" });
     setTimeout(() => setNotice(null), 3000);
-    onSaved(updated);
+    onSaved(updatedLocal);
   }
 
   function handleScheduleConfirm() {
@@ -329,6 +400,15 @@ function PostEditor({ initial, onSaved, onCancel }: PostEditorProps) {
     const iso = new Date(scheduleDate).toISOString();
     setScheduleModal(false);
     doSave("Agendado", iso);
+  }
+
+  function handleAddCategory() {
+    const trimmed = newCatName.trim();
+    if (!trimmed) return;
+    onAddCategory(trimmed);
+    set("category", trimmed);
+    setNewCatName("");
+    setShowNewCat(false);
   }
 
   const wordCount = post.content.trim().split(/\s+/).filter(Boolean).length;
@@ -371,7 +451,6 @@ function PostEditor({ initial, onSaved, onCancel }: PostEditorProps) {
         </div>
       </div>
 
-      {/* Notice */}
       {notice && (
         <div className={`mx-6 mt-4 rounded-xl px-4 py-3 text-sm font-medium ${notice.type === "ok" ? "bg-green-50 text-green-800 border border-green-200" : "bg-red-50 text-red-700 border border-red-200"}`}>
           {notice.msg}
@@ -409,7 +488,7 @@ function PostEditor({ initial, onSaved, onCancel }: PostEditorProps) {
               <textarea
                 className="w-full resize-none px-4 py-4 text-sm leading-relaxed text-slate-800 bg-white outline-none font-mono"
                 style={{ minHeight: 420 }}
-                placeholder={`## Subtítulo\n\nEscreva o conteúdo do artigo em Markdown.\n\nUse **negrito**, *itálico*, [links](url), listas, tabelas e blocos de código.\n\n\`\`\`\nExemplo de código\n\`\`\``}
+                placeholder={`## Subtítulo\n\nEscreva o conteúdo em Markdown.\n\nUse **negrito**, *itálico*, [links](url) e listas.\n\nPara imagens no texto: ![descrição da imagem](https://url-da-imagem.com)\nPara múltiplas imagens, adicione uma por linha.\n\nPara vídeo YouTube, use o campo ao lado.`}
                 value={post.content}
                 onChange={(e) => set("content", e.target.value)}
                 spellCheck
@@ -417,7 +496,10 @@ function PostEditor({ initial, onSaved, onCancel }: PostEditorProps) {
             </div>
           </FormField>
 
-          <FormField label="Imagem de capa (URL)">
+          <FormField
+            label="Imagem de capa (URL)"
+            hint="Recomendado: 1200×630 px (proporção 16:9). Máx. 2 MB. Cole a URL pública da imagem. Para imagens adicionais dentro do texto, use a sintaxe Markdown: ![descrição](url)"
+          >
             <input
               className="w-full rounded-xl border border-slate-200 px-4 py-2.5 text-sm outline-none focus:ring-2 focus:ring-green-400/40 transition-shadow placeholder:text-slate-400"
               placeholder="https://..."
@@ -426,12 +508,15 @@ function PostEditor({ initial, onSaved, onCancel }: PostEditorProps) {
             />
             {post.coverImage && (
               <div className="mt-2 rounded-xl overflow-hidden border border-slate-200 h-40 bg-slate-50">
-                <img src={post.coverImage} alt="Capa" className="w-full h-full object-cover" onError={(e) => (e.currentTarget.style.display = "none")} />
+                <img src={post.coverImage} alt="Capa" className="w-full h-full object-cover" onError={(e) => { (e.currentTarget as HTMLImageElement).style.display = "none"; }} />
               </div>
             )}
           </FormField>
 
-          <FormField label="Vídeo YouTube (URL ou ID)">
+          <FormField
+            label="Vídeo YouTube (URL ou ID)"
+            hint="Aparece ao final do artigo. Para incorporar vídeos em posições específicas dentro do texto, não é suportado via Markdown — use o campo acima."
+          >
             <input
               className="w-full rounded-xl border border-slate-200 px-4 py-2.5 text-sm outline-none focus:ring-2 focus:ring-green-400/40 transition-shadow placeholder:text-slate-400"
               placeholder="https://youtube.com/watch?v=... ou apenas o ID"
@@ -455,6 +540,22 @@ function PostEditor({ initial, onSaved, onCancel }: PostEditorProps) {
                 <option value="">Selecionar...</option>
                 {categories.map((c) => <option key={c} value={c}>{c}</option>)}
               </select>
+              {showNewCat ? (
+                <div className="flex gap-1.5 mt-1">
+                  <input
+                    className="flex-1 rounded-lg border border-slate-200 px-2 py-1.5 text-xs outline-none focus:ring-2 focus:ring-green-400/40"
+                    placeholder="Nova categoria..."
+                    value={newCatName}
+                    onChange={(e) => setNewCatName(e.target.value)}
+                    onKeyDown={(e) => e.key === "Enter" && handleAddCategory()}
+                    autoFocus
+                  />
+                  <button type="button" onClick={handleAddCategory} className="px-2 py-1.5 rounded-lg bg-green-600 text-white text-xs font-medium hover:bg-green-700 transition-colors">OK</button>
+                  <button type="button" onClick={() => { setShowNewCat(false); setNewCatName(""); }} className="px-2 py-1.5 rounded-lg text-slate-400 hover:text-slate-700"><X size={12} /></button>
+                </div>
+              ) : (
+                <button type="button" onClick={() => setShowNewCat(true)} className="text-xs text-green-600 hover:underline text-left">+ Nova categoria</button>
+              )}
             </FormField>
 
             <FormField label="Slug">
@@ -570,7 +671,6 @@ function PostList({ posts, onNew, onEdit, onDelete }: {
         <Button size="sm" onClick={onNew}><Plus className="h-4 w-4" /> Novo artigo</Button>
       </CardHeader>
       <CardContent>
-        {/* Filter tabs */}
         <div className="flex gap-1 mb-4 border-b border-slate-100">
           {(["Todos", "Publicado", "Agendado", "Rascunho"] as const).map((tab) => (
             <button
@@ -637,14 +737,20 @@ function PostList({ posts, onNew, onEdit, onDelete }: {
 
 // ─── Main page ────────────────────────────────────────────────────────────────
 
-type AdminView = { section: "home" } | { section: "tool"; tool: Exclude<ToolKey, null> } | { section: "cms-list" } | { section: "cms-edit"; post: Post };
+type AdminView = { section: "home" } | { section: "tool"; tool: Exclude<ToolKey, null> } | { section: "cms-edit"; post: Post };
 
 export function AdminPage() {
   const { signOut, localAdmin } = useAuth();
   const [settings, setSettings]   = useState<ToolSettings>(loadToolSettings);
-  const [posts, setPosts]         = useState<Post[]>(loadPosts);
+  const [posts, setPosts]         = useState<Post[]>(() => loadPosts());
+  const [categories, setCategories] = useState<string[]>(() => loadCategories());
   const [saved, setSaved]         = useState(false);
   const [view, setView]           = useState<AdminView>({ section: "home" });
+
+  useEffect(() => {
+    apiFetchPosts().then(setPosts).catch(() => {});
+    apiFetchCategories().then(setCategories).catch(() => {});
+  }, []);
 
   const handleSaveSettings = useCallback(() => {
     saveToolSettings(settings);
@@ -655,6 +761,24 @@ export function AdminPage() {
   const handleResetSettings = useCallback(() => {
     setSettings(resetToolSettings());
   }, []);
+
+  function handleDeletePost(id: string) {
+    const updated = localDeletePost(id);
+    setPosts(updated);
+    apiDeletePost(id).catch(() => {});
+  }
+
+  function handleAddCategory(name: string) {
+    const updated = addCategory(name);
+    setCategories(updated);
+    apiAddCategory(name).catch(() => {});
+  }
+
+  function handleRemoveCategory(name: string) {
+    const updated = removeCategory(name);
+    setCategories(updated);
+    apiDeleteCategory(name).catch(() => {});
+  }
 
   const pubCount    = posts.filter((p) => p.status === "Publicado").length;
   const draftCount  = posts.filter((p) => p.status === "Rascunho").length;
@@ -670,7 +794,7 @@ export function AdminPage() {
         <div className="grid gap-4 md:grid-cols-3">
           <MetricCard label="Artigos publicados" value={String(pubCount)} helper={`${draftCount} rascunho${draftCount !== 1 ? "s" : ""}`} icon={Newspaper} />
           <MetricCard label="Ferramentas" value="3" helper="Configuráveis" icon={Settings} />
-          <MetricCard label="Categorias" value={String(loadCategories().length)} helper="CMS Aprenda" icon={Tags} />
+          <MetricCard label="Categorias" value={String(categories.length)} helper="CMS Aprenda" icon={Tags} />
         </div>
 
         <div className="mt-10">
@@ -696,11 +820,19 @@ export function AdminPage() {
               </div>
 
               <div className="mt-8">
+                <CategoryManager
+                  categories={categories}
+                  onAdd={handleAddCategory}
+                  onRemove={handleRemoveCategory}
+                />
+              </div>
+
+              <div className="mt-6">
                 <PostList
                   posts={posts}
                   onNew={() => setView({ section: "cms-edit", post: newPost() })}
                   onEdit={(p) => setView({ section: "cms-edit", post: p })}
-                  onDelete={(id) => setPosts(deletePost(id))}
+                  onDelete={handleDeletePost}
                 />
               </div>
             </>
@@ -726,8 +858,10 @@ export function AdminPage() {
             <Card className="rounded-xl border-slate-200 shadow-sm overflow-hidden">
               <PostEditor
                 initial={view.post}
+                categories={categories}
                 onSaved={(updated) => { setPosts(updated); }}
                 onCancel={() => setView({ section: "home" })}
+                onAddCategory={handleAddCategory}
               />
             </Card>
           )}

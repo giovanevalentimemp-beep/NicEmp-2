@@ -16,11 +16,11 @@ export function Header() {
   }, []);
 
   const navItems = [
-    { label: "Inicio", href: routes.home },
+    { label: "Início", href: routes.home },
     { label: "Ferramentas", href: routes.toolsHome },
     ...(user ? [{ label: "Painel", href: routes.manage }] : []),
     { label: "Aprenda", href: routes.academy },
-    { label: "Solucoes", href: routes.solutions },
+    { label: "Soluções", href: routes.solutions },
     { label: "Planos", href: routes.plans },
     { label: "Sobre", href: routes.about },
   ];

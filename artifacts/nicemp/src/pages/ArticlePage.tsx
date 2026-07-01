@@ -1,28 +1,44 @@
+import { useState, useEffect } from "react";
 import { useRoute, Link } from "wouter";
-import { AppLayout, PageContainer } from "@/components/ds/AppLayout";
-import { Badge } from "@/components/ui/badge";
-import { Header } from "@/components/Header";
 import { Footer } from "@/components/Footer";
-import { loadPosts, getPostBySlug } from "@/lib/cms-storage";
+import { Header } from "@/components/Header";
+import { Badge } from "@/components/ui/badge";
+import { loadPosts, getPostBySlug, type Post } from "@/lib/cms-storage";
+import { apiFetchPosts } from "@/lib/cms-api";
 import { renderMarkdown } from "@/lib/markdown";
 import { Calendar, Clock, ArrowLeft, Eye } from "lucide-react";
 
 export function ArticlePage() {
   const [, params] = useRoute("/aprenda/:slug");
   const slug = params?.slug ?? "";
-
   const isPreview = new URLSearchParams(window.location.search).has("preview");
 
-  const post = isPreview
-    ? getPostBySlug(slug)
-    : getPostBySlug(slug) && getPostBySlug(slug)!.status === "Publicado"
-      ? getPostBySlug(slug)
-      : undefined;
+  const [post, setPost] = useState<Post | undefined>(() => {
+    const p = getPostBySlug(slug);
+    return isPreview ? p : (p?.status === "Publicado" ? p : undefined);
+  });
+  const [related, setRelated] = useState<Post[]>(() => {
+    const all = loadPosts();
+    const p = getPostBySlug(slug);
+    return p
+      ? all.filter((x) => x.status === "Publicado" && x.category === p.category && x.id !== p.id).slice(0, 3)
+      : [];
+  });
 
-  const allPosts = loadPosts();
-  const related = post
-    ? allPosts.filter((p) => p.status === "Publicado" && p.category === post.category && p.id !== post.id).slice(0, 3)
-    : [];
+  useEffect(() => {
+    apiFetchPosts()
+      .then((posts) => {
+        const found = posts.find((p) => p.slug === slug);
+        const resolved = isPreview ? found : (found?.status === "Publicado" ? found : undefined);
+        setPost(resolved);
+        if (resolved) {
+          setRelated(
+            posts.filter((p) => p.status === "Publicado" && p.category === resolved.category && p.id !== resolved.id).slice(0, 3)
+          );
+        }
+      })
+      .catch(() => {});
+  }, [slug, isPreview]);
 
   if (!post) {
     return (
@@ -56,19 +72,21 @@ export function ArticlePage() {
         )}
 
         <div className="mx-auto" style={{ maxWidth: 760, padding: "48px 32px 80px" }}>
-          {/* Back */}
           <Link href="/aprenda" className="inline-flex items-center gap-1.5 text-sm text-slate-500 hover:text-slate-900 transition-colors mb-8">
             <ArrowLeft size={15} /> Voltar ao blog
           </Link>
 
-          {/* Cover */}
           {post.coverImage && (
-            <div className="mb-8 rounded-2xl overflow-hidden" style={{ maxHeight: 360 }}>
-              <img src={post.coverImage} alt={post.title} className="w-full h-full object-cover" />
+            <div className="mb-8 rounded-2xl overflow-hidden" style={{ maxHeight: 420 }}>
+              <img
+                src={post.coverImage}
+                alt={post.title}
+                className="w-full h-full object-cover"
+                onError={(e) => { (e.currentTarget as HTMLImageElement).style.display = "none"; }}
+              />
             </div>
           )}
 
-          {/* Header */}
           <Badge className="mb-4 rounded-md">{post.category}</Badge>
           <h1 className="text-4xl font-bold leading-tight mb-4" style={{ color: "#111827", letterSpacing: "-0.03em" }}>
             {post.title}
@@ -102,22 +120,16 @@ export function ArticlePage() {
             )}
           </div>
 
-          {/* Content */}
           {htmlContent ? (
             <div
               className="article-content"
               dangerouslySetInnerHTML={{ __html: htmlContent }}
-              style={{
-                color: "#374151",
-                lineHeight: 1.8,
-                fontSize: "1.0625rem",
-              }}
+              style={{ color: "#374151", lineHeight: 1.8, fontSize: "1.0625rem" }}
             />
           ) : (
             <p className="text-slate-400 italic">Conteúdo em breve.</p>
           )}
 
-          {/* Video */}
           {post.videoYoutube && (
             <div className="mt-10">
               <div className="aspect-video rounded-2xl overflow-hidden border border-slate-200">
@@ -131,7 +143,6 @@ export function ArticlePage() {
             </div>
           )}
 
-          {/* Related */}
           {related.length > 0 && (
             <div className="mt-16 pt-8 border-t border-slate-200">
               <h2 className="text-xl font-bold text-slate-950 mb-5">Artigos relacionados</h2>

@@ -30,7 +30,7 @@ const solutions = [
 
 export function SolutionsSection() {
   return (
-    <section className="py-20" style={{ background: "#FFFFFF" }}>
+    <section id="solucoes" className="py-20" style={{ background: "#FFFFFF" }}>
       <div className="mx-auto" style={{ maxWidth: 1280, padding: "0 32px" }}>
         <h2
           className="font-semibold text-2xl text-center mb-10"
