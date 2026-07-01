@@ -266,17 +266,29 @@ router.get("/cms/categories", async (_req, res) => {
   }
 });
 
-router.post("/cms/categories", async (req, res) => {
+router.post("/cms/categories", async (req, res): Promise<void> => {
   try {
     const { name } = req.body as { name: string };
-    if (!name?.trim()) return res.status(400).json({ error: "Name required" });
-    await db.insert(cmsCategoriesTable).values({ name: name.trim() }).onConflictDoUpdate({
-      target: cmsCategoriesTable.name,
-      set: { name: name.trim() },
-    });
+
+    if (!name?.trim()) {
+      res.status(400).json({ error: "Name required" });
+      return;
+    }
+
+    await db
+      .insert(cmsCategoriesTable)
+      .values({ name: name.trim() })
+      .onConflictDoUpdate({
+        target: cmsCategoriesTable.name,
+        set: { name: name.trim() },
+      });
+
     res.json({ name: name.trim() });
+    return;
+
   } catch (err) {
     res.status(500).json({ error: String(err) });
+    return;
   }
 });
 
