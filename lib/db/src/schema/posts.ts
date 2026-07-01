@@ -25,5 +25,12 @@ export const cmsCategoriesTable = pgTable("cms_categories", {
   name: text("name").primaryKey(),
 });
 
+export const cmsPostViewsTable = pgTable("cms_post_views", {
+  id: text("id").primaryKey(),
+  postId: text("post_id").notNull(),
+  viewedAt: text("viewed_at").notNull(),
+});
+
 export type DbPost = typeof cmsPostsTable.$inferSelect;
 export type DbCategory = typeof cmsCategoriesTable.$inferSelect;
+export type DbPostView = typeof cmsPostViewsTable.$inferSelect;

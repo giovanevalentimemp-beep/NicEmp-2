@@ -1,7 +1,7 @@
 import { Router } from "express";
 import { db } from "@workspace/db";
-import { cmsPostsTable, cmsCategoriesTable } from "@workspace/db";
-import { eq } from "drizzle-orm";
+import { cmsPostsTable, cmsCategoriesTable, cmsPostViewsTable } from "@workspace/db";
+import { eq, gte, sql } from "drizzle-orm";
 
 const router = Router();
 
@@ -54,24 +54,13 @@ function dbToPost(row: typeof cmsPostsTable.$inferSelect) {
   let tags: string[] = [];
   try { tags = JSON.parse(row.tags || "[]"); } catch { tags = []; }
   return {
-    id: row.id,
-    title: row.title,
-    subtitle: row.subtitle,
-    slug: row.slug,
-    category: row.category,
-    status: row.status as "Rascunho" | "Publicado" | "Agendado",
-    tags,
-    metaTitle: row.metaTitle,
-    metaDescription: row.metaDescription,
-    excerpt: row.excerpt,
-    content: row.content,
-    coverImage: row.coverImage,
-    videoYoutube: row.videoYoutube,
-    readingTime: row.readingTime,
-    scheduledAt: row.scheduledAt,
-    createdAt: row.createdAt,
-    updatedAt: row.updatedAt,
-    publishedAt: row.publishedAt,
+    id: row.id, title: row.title, subtitle: row.subtitle, slug: row.slug,
+    category: row.category, status: row.status as "Rascunho" | "Publicado" | "Agendado",
+    tags, metaTitle: row.metaTitle, metaDescription: row.metaDescription,
+    excerpt: row.excerpt, content: row.content, coverImage: row.coverImage,
+    videoYoutube: row.videoYoutube, readingTime: row.readingTime,
+    scheduledAt: row.scheduledAt, createdAt: row.createdAt,
+    updatedAt: row.updatedAt, publishedAt: row.publishedAt,
   };
 }
 
@@ -109,7 +98,7 @@ async function autoPublishScheduled() {
           .where(eq(cmsPostsTable.id, post.id));
       }
     }
-  } catch { /* no-op if table missing */ }
+  } catch { /* no-op */ }
 }
 
 async function seedIfEmpty() {
@@ -125,7 +114,8 @@ async function seedIfEmpty() {
   } catch { /* no-op */ }
 }
 
-// GET /api/cms/posts
+// ─── Posts ────────────────────────────────────────────────────────────────────
+
 router.get("/cms/posts", async (_req, res) => {
   try {
     await seedIfEmpty();
@@ -137,7 +127,6 @@ router.get("/cms/posts", async (_req, res) => {
   }
 });
 
-// PUT /api/cms/posts/:id
 router.put("/cms/posts/:id", async (req, res) => {
   try {
     const row = postToDb({ ...req.body, id: req.params.id });
@@ -151,9 +140,9 @@ router.put("/cms/posts/:id", async (req, res) => {
   }
 });
 
-// DELETE /api/cms/posts/:id
 router.delete("/cms/posts/:id", async (req, res) => {
   try {
+    await db.delete(cmsPostViewsTable).where(eq(cmsPostViewsTable.postId, req.params.id));
     await db.delete(cmsPostsTable).where(eq(cmsPostsTable.id, req.params.id));
     res.json({ ok: true });
   } catch (err) {
@@ -161,7 +150,112 @@ router.delete("/cms/posts/:id", async (req, res) => {
   }
 });
 
-// GET /api/cms/categories
+// ─── View tracking ────────────────────────────────────────────────────────────
+
+router.post("/cms/posts/:id/view", async (req, res) => {
+  try {
+    await db.insert(cmsPostViewsTable).values({
+      id: `${req.params.id}_${Date.now()}_${Math.random().toString(36).slice(2)}`,
+      postId: req.params.id,
+      viewedAt: new Date().toISOString(),
+    });
+    res.json({ ok: true });
+  } catch (err) {
+    res.status(500).json({ error: String(err) });
+  }
+});
+
+// ─── Analytics ────────────────────────────────────────────────────────────────
+
+router.get("/cms/analytics", async (_req, res) => {
+  try {
+    await seedIfEmpty();
+
+    const now = new Date();
+    const todayStart = new Date(now);
+    todayStart.setHours(0, 0, 0, 0);
+    const weekStart = new Date(now);
+    weekStart.setDate(weekStart.getDate() - 6);
+    weekStart.setHours(0, 0, 0, 0);
+
+    // All time totals per post
+    const allTimeCounts = await db
+      .select({
+        postId: cmsPostViewsTable.postId,
+        views: sql<number>`cast(count(*) as int)`,
+      })
+      .from(cmsPostViewsTable)
+      .groupBy(cmsPostViewsTable.postId);
+
+    // Today counts per post
+    const todayCounts = await db
+      .select({
+        postId: cmsPostViewsTable.postId,
+        views: sql<number>`cast(count(*) as int)`,
+      })
+      .from(cmsPostViewsTable)
+      .where(gte(cmsPostViewsTable.viewedAt, todayStart.toISOString()))
+      .groupBy(cmsPostViewsTable.postId);
+
+    // Last 7 days counts per post
+    const weekCounts = await db
+      .select({
+        postId: cmsPostViewsTable.postId,
+        views: sql<number>`cast(count(*) as int)`,
+      })
+      .from(cmsPostViewsTable)
+      .where(gte(cmsPostViewsTable.viewedAt, weekStart.toISOString()))
+      .groupBy(cmsPostViewsTable.postId);
+
+    // Views by day (last 7 days)
+    const allViews = await db
+      .select({ viewedAt: cmsPostViewsTable.viewedAt })
+      .from(cmsPostViewsTable)
+      .where(gte(cmsPostViewsTable.viewedAt, weekStart.toISOString()));
+
+    const dayMap: Record<string, number> = {};
+    for (let i = 6; i >= 0; i--) {
+      const d = new Date(now);
+      d.setDate(d.getDate() - i);
+      dayMap[d.toISOString().slice(0, 10)] = 0;
+    }
+    for (const v of allViews) {
+      const day = v.viewedAt.slice(0, 10);
+      if (day in dayMap) dayMap[day]++;
+    }
+    const viewsByDay = Object.entries(dayMap).map(([date, views]) => ({ date, views }));
+
+    // Get posts to enrich top posts with titles/slugs
+    const posts = await db.select().from(cmsPostsTable);
+    const postMap = new Map(posts.map((p) => [p.id, p]));
+
+    const todayMap = new Map(todayCounts.map((r) => [r.postId, r.views]));
+    const weekMap  = new Map(weekCounts.map((r)  => [r.postId, r.views]));
+
+    const topPosts = allTimeCounts
+      .sort((a, b) => b.views - a.views)
+      .slice(0, 7)
+      .map((r) => ({
+        postId: r.postId,
+        title: postMap.get(r.postId)?.title ?? "Artigo removido",
+        slug: postMap.get(r.postId)?.slug ?? "",
+        views: r.views,
+        viewsToday: todayMap.get(r.postId) ?? 0,
+        viewsLast7Days: weekMap.get(r.postId) ?? 0,
+      }));
+
+    const totalViews = allTimeCounts.reduce((s, r) => s + r.views, 0);
+    const viewsToday = todayCounts.reduce((s, r) => s + r.views, 0);
+    const viewsLast7Days = weekCounts.reduce((s, r) => s + r.views, 0);
+
+    res.json({ totalViews, viewsToday, viewsLast7Days, topPosts, viewsByDay });
+  } catch (err) {
+    res.status(500).json({ error: String(err) });
+  }
+});
+
+// ─── Categories ───────────────────────────────────────────────────────────────
+
 router.get("/cms/categories", async (_req, res) => {
   try {
     await seedIfEmpty();
@@ -172,7 +266,6 @@ router.get("/cms/categories", async (_req, res) => {
   }
 });
 
-// POST /api/cms/categories
 router.post("/cms/categories", async (req, res) => {
   try {
     const { name } = req.body as { name: string };
@@ -187,7 +280,6 @@ router.post("/cms/categories", async (req, res) => {
   }
 });
 
-// DELETE /api/cms/categories/:name
 router.delete("/cms/categories/:name", async (req, res) => {
   try {
     await db.delete(cmsCategoriesTable).where(eq(cmsCategoriesTable.name, decodeURIComponent(req.params.name)));

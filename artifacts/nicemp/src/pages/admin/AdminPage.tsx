@@ -1,17 +1,16 @@
-import { useState, useCallback, useEffect, useRef } from "react";
+import { useState, useCallback, useEffect } from "react";
 import {
   ArrowLeft, Building2, Calculator, ChevronDown, ChevronRight,
-  DollarSign, FileText, Image, Newspaper, Plus, RotateCcw,
+  DollarSign, FileText, Plus, RotateCcw,
   Save, Settings, ShieldCheck, Tags, TrendingUp, Users,
-  Video, Wallet, X, Trash2, Pencil, Eye, Clock, CheckCircle2,
-  Copy, Calendar,
+  X, Trash2, Pencil, Eye, Clock, CheckCircle2,
+  Calendar, Wallet, Newspaper, BarChart2,
 } from "lucide-react";
 import { AppLayout, PageContainer, PageHeader } from "@/components/ds/AppLayout";
 import { MetricCard } from "@/components/ds/MetricCard";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { useAuth } from "@/hooks/use-auth";
 import {
@@ -27,9 +26,10 @@ import {
 import {
   apiFetchPosts, apiSavePost, apiDeletePost,
   apiFetchCategories, apiAddCategory, apiDeleteCategory,
+  apiFetchAnalytics, type Analytics,
 } from "@/lib/cms-api";
 
-// ─── Tool settings helpers ────────────────────────────────────────────────────
+// ─── Tool config helpers ──────────────────────────────────────────────────────
 
 const FAIXA_LABEL = (i: number) =>
   ["1ª faixa", "2ª faixa", "3ª faixa", "4ª faixa", "5ª faixa", "6ª faixa"][i] ?? `Faixa ${i + 1}`;
@@ -225,7 +225,7 @@ function RoiConfig({ settings, onChange }: { settings: ToolSettings; onChange: (
 
 type ToolKey = "simples" | "markup" | "roi" | null;
 
-interface ToolCard {
+interface ToolCardDef {
   key: ToolKey;
   icon: React.ReactNode;
   title: string;
@@ -233,7 +233,7 @@ interface ToolCard {
   configured: boolean;
 }
 
-const TOOL_CARDS: ToolCard[] = [
+const TOOL_CARDS: ToolCardDef[] = [
   { key: "simples", icon: <Building2 className="h-5 w-5 text-green-700" />, title: "Simples Nacional", description: "Tabelas de faixas, alíquotas e parcelas a deduzir dos Anexos I a V.", configured: true },
   { key: "markup",  icon: <Calculator className="h-5 w-5 text-blue-600" />, title: "Calculadora de Markup", description: "Parâmetros padrão, casas decimais e exemplos por setor.", configured: true },
   { key: "roi",     icon: <TrendingUp className="h-5 w-5 text-purple-600" />, title: "Calculadora de ROI", description: "Opções de exibição, casas decimais e exemplos práticos.", configured: true },
@@ -249,6 +249,126 @@ function ToolConfigPanel({ toolKey, settings, onChange }: { toolKey: Exclude<Too
   if (toolKey === "markup")  return <MarkupConfig  settings={settings} onChange={onChange} />;
   if (toolKey === "roi")     return <RoiConfig     settings={settings} onChange={onChange} />;
   return null;
+}
+
+// ─── Analytics panel ──────────────────────────────────────────────────────────
+
+function MiniBarChart({ data }: { data: { date: string; views: number }[] }) {
+  const max = Math.max(...data.map((d) => d.views), 1);
+  const fmtDate = (iso: string) => {
+    const [, , d] = iso.split("-");
+    return d;
+  };
+  return (
+    <div className="flex items-end gap-1 h-16">
+      {data.map((d) => (
+        <div key={d.date} className="flex-1 flex flex-col items-center gap-0.5 group" title={`${d.date}: ${d.views} leituras`}>
+          <div
+            className="w-full rounded-t-sm transition-all"
+            style={{
+              height: `${Math.max(4, (d.views / max) * 52)}px`,
+              background: d.views === 0 ? "#F1F5F9" : "#16A34A",
+              opacity: d.views === 0 ? 0.4 : 1,
+            }}
+          />
+          <span className="text-[10px] text-slate-400 leading-none">{fmtDate(d.date)}</span>
+        </div>
+      ))}
+    </div>
+  );
+}
+
+function AnalyticsPanel({ analytics, onRefresh }: { analytics: Analytics | null; onRefresh: () => void }) {
+  if (!analytics) {
+    return (
+      <Card className="rounded-xl border-slate-200 shadow-sm">
+        <CardContent className="p-6 flex items-center gap-3 text-sm text-slate-400">
+          <BarChart2 size={16} /> Carregando analytics...
+        </CardContent>
+      </Card>
+    );
+  }
+
+  const maxViews = Math.max(...analytics.topPosts.map((p) => p.views), 1);
+
+  return (
+    <Card className="rounded-xl border-slate-200 shadow-sm">
+      <CardHeader className="flex-row items-center justify-between pb-2">
+        <CardTitle className="flex items-center gap-2 text-base">
+          <BarChart2 size={18} /> Analytics de Leitura
+        </CardTitle>
+        <button
+          type="button"
+          onClick={onRefresh}
+          className="text-xs text-slate-400 hover:text-slate-700 transition-colors"
+        >
+          Atualizar
+        </button>
+      </CardHeader>
+      <CardContent className="pt-0">
+        <div className="grid grid-cols-3 gap-4 mb-6">
+          {[
+            { label: "Leituras hoje", value: analytics.viewsToday, color: "#0EA5E9" },
+            { label: "Últimos 7 dias", value: analytics.viewsLast7Days, color: "#8B5CF6" },
+            { label: "Total histórico", value: analytics.totalViews, color: "#16A34A" },
+          ].map(({ label, value, color }) => (
+            <div key={label} className="rounded-xl border border-slate-100 bg-slate-50 p-4 text-center">
+              <p className="text-2xl font-bold" style={{ color }}>{value.toLocaleString("pt-BR")}</p>
+              <p className="text-xs text-slate-500 mt-1">{label}</p>
+            </div>
+          ))}
+        </div>
+
+        <div className="mb-6">
+          <p className="text-xs font-semibold text-slate-500 uppercase tracking-wide mb-3">Leituras por dia (7 dias)</p>
+          <MiniBarChart data={analytics.viewsByDay} />
+        </div>
+
+        {analytics.topPosts.length > 0 && (
+          <div>
+            <p className="text-xs font-semibold text-slate-500 uppercase tracking-wide mb-3">Artigos mais lidos</p>
+            <div className="space-y-3">
+              {analytics.topPosts.map((post, idx) => (
+                <div key={post.postId} className="flex items-center gap-3">
+                  <span className="w-5 text-xs font-bold text-slate-300 shrink-0">{idx + 1}</span>
+                  <div className="flex-1 min-w-0">
+                    <div className="flex items-center justify-between mb-1">
+                      <a
+                        href={`/aprenda/${post.slug}`}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        className="text-sm font-medium text-slate-800 hover:text-green-600 transition-colors truncate"
+                      >
+                        {post.title}
+                      </a>
+                      <span className="text-xs font-semibold text-slate-600 ml-2 shrink-0">
+                        {post.views} {post.views === 1 ? "leitura" : "leituras"}
+                      </span>
+                    </div>
+                    <div className="h-1.5 w-full rounded-full bg-slate-100 overflow-hidden">
+                      <div
+                        className="h-full rounded-full transition-all"
+                        style={{
+                          width: `${(post.views / maxViews) * 100}%`,
+                          background: idx === 0 ? "#16A34A" : idx === 1 ? "#0EA5E9" : "#8B5CF6",
+                        }}
+                      />
+                    </div>
+                  </div>
+                </div>
+              ))}
+            </div>
+          </div>
+        )}
+
+        {analytics.topPosts.length === 0 && (
+          <p className="text-sm text-slate-400 text-center py-4">
+            Nenhuma leitura registrada ainda. As leituras são contabilizadas quando visitantes acessam um artigo.
+          </p>
+        )}
+      </CardContent>
+    </Card>
+  );
 }
 
 // ─── Category Manager ─────────────────────────────────────────────────────────
@@ -294,9 +414,7 @@ function CategoryManager({ categories, onAdd, onRemove }: {
                 {cat}
                 <button
                   type="button"
-                  onClick={() => {
-                    if (confirm(`Remover categoria "${cat}"?`)) onRemove(cat);
-                  }}
+                  onClick={() => { if (confirm(`Remover categoria "${cat}"?`)) onRemove(cat); }}
                   className="text-slate-400 hover:text-red-500 transition-colors"
                 >
                   <X size={12} />
@@ -310,7 +428,7 @@ function CategoryManager({ categories, onAdd, onRemove }: {
   );
 }
 
-// ─── CMS ─────────────────────────────────────────────────────────────────────
+// ─── CMS ──────────────────────────────────────────────────────────────────────
 
 const STATUS_STYLES: Record<PostStatus, { bg: string; color: string; label: string; icon: React.ReactNode }> = {
   Publicado: { bg: "#DCFCE7", color: "#15803D", label: "Publicado", icon: <CheckCircle2 size={12} /> },
@@ -381,9 +499,7 @@ function PostEditor({ initial, categories, onSaved, onCancel, onAddCategory }: P
     const wordCount = post.content.trim().split(/\s+/).filter(Boolean).length;
     const readingTime = `${Math.max(1, Math.round(wordCount / 200))} min`;
     const toSave: Post = {
-      ...post,
-      status,
-      readingTime,
+      ...post, status, readingTime,
       scheduledAt: scheduledAt ?? (status === "Agendado" ? post.scheduledAt : ""),
       publishedAt: status === "Publicado" ? (post.publishedAt || new Date().toISOString()) : post.publishedAt,
     };
@@ -397,9 +513,8 @@ function PostEditor({ initial, categories, onSaved, onCancel, onAddCategory }: P
 
   function handleScheduleConfirm() {
     if (!scheduleDate) { setNotice({ type: "err", msg: "Selecione uma data e hora para agendar." }); return; }
-    const iso = new Date(scheduleDate).toISOString();
     setScheduleModal(false);
-    doSave("Agendado", iso);
+    doSave("Agendado", new Date(scheduleDate).toISOString());
   }
 
   function handleAddCategory() {
@@ -416,7 +531,6 @@ function PostEditor({ initial, categories, onSaved, onCancel, onAddCategory }: P
 
   return (
     <div className="flex flex-col min-h-0">
-      {/* Topbar */}
       <div className="flex items-center justify-between border-b border-slate-200 px-6 py-3 bg-white sticky top-0 z-10">
         <div className="flex items-center gap-3">
           <button type="button" onClick={onCancel} className="flex items-center gap-1.5 text-sm text-slate-500 hover:text-slate-900 transition-colors">
@@ -430,16 +544,11 @@ function PostEditor({ initial, categories, onSaved, onCancel, onAddCategory }: P
           <Button variant="ghost" size="sm" onClick={() => doSave("Rascunho")} className="text-slate-600">
             <Save className="h-4 w-4" /> Salvar rascunho
           </Button>
-          <Button
-            variant="outline"
-            size="sm"
-            onClick={() => {
-              if (!post.slug) { setNotice({ type: "err", msg: "Adicione um título/slug antes de pré-visualizar." }); return; }
-              const toPreview = { ...post, updatedAt: new Date().toISOString() };
-              savePost(toPreview);
-              window.open(`/aprenda/${post.slug}?preview=1`, "_blank");
-            }}
-          >
+          <Button variant="outline" size="sm" onClick={() => {
+            if (!post.slug) { setNotice({ type: "err", msg: "Adicione um título/slug antes de pré-visualizar." }); return; }
+            savePost({ ...post, updatedAt: new Date().toISOString() });
+            window.open(`/aprenda/${post.slug}?preview=1`, "_blank");
+          }}>
             <Eye className="h-4 w-4" /> Pré-visualizar
           </Button>
           <Button variant="outline" size="sm" onClick={() => setScheduleModal(true)}>
@@ -457,9 +566,7 @@ function PostEditor({ initial, categories, onSaved, onCancel, onAddCategory }: P
         </div>
       )}
 
-      {/* Body */}
       <div className="flex gap-6 p-6 flex-1">
-        {/* Main column */}
         <div className="flex-1 flex flex-col gap-5 min-w-0">
           <FormField label="Título" required>
             <input
@@ -488,7 +595,7 @@ function PostEditor({ initial, categories, onSaved, onCancel, onAddCategory }: P
               <textarea
                 className="w-full resize-none px-4 py-4 text-sm leading-relaxed text-slate-800 bg-white outline-none font-mono"
                 style={{ minHeight: 420 }}
-                placeholder={`## Subtítulo\n\nEscreva o conteúdo em Markdown.\n\nUse **negrito**, *itálico*, [links](url) e listas.\n\nPara imagens no texto: ![descrição da imagem](https://url-da-imagem.com)\nPara múltiplas imagens, adicione uma por linha.\n\nPara vídeo YouTube, use o campo ao lado.`}
+                placeholder={`## Subtítulo\n\nEscreva o conteúdo em Markdown.\n\nUse **negrito**, *itálico*, [links](url) e listas.\n\nPara imagens no texto:\n![descrição da imagem](https://url-da-imagem.com)\n\nPara múltiplas imagens, adicione uma por linha.`}
                 value={post.content}
                 onChange={(e) => set("content", e.target.value)}
                 spellCheck
@@ -496,10 +603,7 @@ function PostEditor({ initial, categories, onSaved, onCancel, onAddCategory }: P
             </div>
           </FormField>
 
-          <FormField
-            label="Imagem de capa (URL)"
-            hint="Recomendado: 1200×630 px (proporção 16:9). Máx. 2 MB. Cole a URL pública da imagem. Para imagens adicionais dentro do texto, use a sintaxe Markdown: ![descrição](url)"
-          >
+          <FormField label="Imagem de capa (URL)" hint="Recomendado: 1200×630 px (proporção 16:9). Máx. 2 MB. Cole a URL pública da imagem. Para imagens adicionais dentro do texto, use: ![descrição](url)">
             <input
               className="w-full rounded-xl border border-slate-200 px-4 py-2.5 text-sm outline-none focus:ring-2 focus:ring-green-400/40 transition-shadow placeholder:text-slate-400"
               placeholder="https://..."
@@ -513,10 +617,7 @@ function PostEditor({ initial, categories, onSaved, onCancel, onAddCategory }: P
             )}
           </FormField>
 
-          <FormField
-            label="Vídeo YouTube (URL ou ID)"
-            hint="Aparece ao final do artigo. Para incorporar vídeos em posições específicas dentro do texto, não é suportado via Markdown — use o campo acima."
-          >
+          <FormField label="Vídeo YouTube (URL ou ID)" hint="Aparece ao final do artigo.">
             <input
               className="w-full rounded-xl border border-slate-200 px-4 py-2.5 text-sm outline-none focus:ring-2 focus:ring-green-400/40 transition-shadow placeholder:text-slate-400"
               placeholder="https://youtube.com/watch?v=... ou apenas o ID"
@@ -526,7 +627,6 @@ function PostEditor({ initial, categories, onSaved, onCancel, onAddCategory }: P
           </FormField>
         </div>
 
-        {/* Sidebar */}
         <div className="w-72 shrink-0 flex flex-col gap-4">
           <div className="rounded-xl border border-slate-200 bg-white p-4 flex flex-col gap-4">
             <h3 className="text-xs font-semibold text-slate-700 uppercase tracking-wide">Publicação</h3>
@@ -542,14 +642,7 @@ function PostEditor({ initial, categories, onSaved, onCancel, onAddCategory }: P
               </select>
               {showNewCat ? (
                 <div className="flex gap-1.5 mt-1">
-                  <input
-                    className="flex-1 rounded-lg border border-slate-200 px-2 py-1.5 text-xs outline-none focus:ring-2 focus:ring-green-400/40"
-                    placeholder="Nova categoria..."
-                    value={newCatName}
-                    onChange={(e) => setNewCatName(e.target.value)}
-                    onKeyDown={(e) => e.key === "Enter" && handleAddCategory()}
-                    autoFocus
-                  />
+                  <input className="flex-1 rounded-lg border border-slate-200 px-2 py-1.5 text-xs outline-none focus:ring-2 focus:ring-green-400/40" placeholder="Nova categoria..." value={newCatName} onChange={(e) => setNewCatName(e.target.value)} onKeyDown={(e) => e.key === "Enter" && handleAddCategory()} autoFocus />
                   <button type="button" onClick={handleAddCategory} className="px-2 py-1.5 rounded-lg bg-green-600 text-white text-xs font-medium hover:bg-green-700 transition-colors">OK</button>
                   <button type="button" onClick={() => { setShowNewCat(false); setNewCatName(""); }} className="px-2 py-1.5 rounded-lg text-slate-400 hover:text-slate-700"><X size={12} /></button>
                 </div>
@@ -559,88 +652,48 @@ function PostEditor({ initial, categories, onSaved, onCancel, onAddCategory }: P
             </FormField>
 
             <FormField label="Slug">
-              <input
-                className="w-full rounded-lg border border-slate-200 px-3 py-2 text-sm text-slate-600 font-mono outline-none focus:ring-2 focus:ring-green-400/40"
-                placeholder="slug-do-artigo"
-                value={post.slug}
-                onChange={(e) => set("slug", slugify(e.target.value))}
-              />
+              <input className="w-full rounded-lg border border-slate-200 px-3 py-2 text-sm text-slate-600 font-mono outline-none focus:ring-2 focus:ring-green-400/40" placeholder="slug-do-artigo" value={post.slug} onChange={(e) => set("slug", slugify(e.target.value))} />
             </FormField>
 
             <FormField label="Tags (separadas por vírgula)">
-              <input
-                className="w-full rounded-lg border border-slate-200 px-3 py-2 text-sm outline-none focus:ring-2 focus:ring-green-400/40 placeholder:text-slate-400"
-                placeholder="roi, indicadores, finanças"
-                value={post.tags.join(", ")}
-                onChange={(e) => setPost((p) => ({ ...p, tags: e.target.value.split(",").map((t) => t.trim()).filter(Boolean) }))}
-              />
+              <input className="w-full rounded-lg border border-slate-200 px-3 py-2 text-sm outline-none focus:ring-2 focus:ring-green-400/40 placeholder:text-slate-400" placeholder="roi, indicadores, finanças" value={post.tags.join(", ")} onChange={(e) => setPost((p) => ({ ...p, tags: e.target.value.split(",").map((t) => t.trim()).filter(Boolean) }))} />
             </FormField>
           </div>
 
           <div className="rounded-xl border border-slate-200 bg-white p-4 flex flex-col gap-4">
             <h3 className="text-xs font-semibold text-slate-700 uppercase tracking-wide">SEO</h3>
-
             <FormField label="Meta title">
-              <input
-                className="w-full rounded-lg border border-slate-200 px-3 py-2 text-sm outline-none focus:ring-2 focus:ring-green-400/40 placeholder:text-slate-400"
-                placeholder="Título para Google..."
-                value={post.metaTitle}
-                onChange={(e) => set("metaTitle", e.target.value)}
-              />
+              <input className="w-full rounded-lg border border-slate-200 px-3 py-2 text-sm outline-none focus:ring-2 focus:ring-green-400/40 placeholder:text-slate-400" placeholder="Título para Google..." value={post.metaTitle} onChange={(e) => set("metaTitle", e.target.value)} />
               <span className="text-xs text-slate-400 text-right">{post.metaTitle.length}/60</span>
             </FormField>
-
             <FormField label="Meta description">
-              <textarea
-                className="w-full rounded-lg border border-slate-200 px-3 py-2 text-sm resize-none outline-none focus:ring-2 focus:ring-green-400/40 placeholder:text-slate-400"
-                rows={3}
-                placeholder="Descrição para Google..."
-                value={post.metaDescription}
-                onChange={(e) => set("metaDescription", e.target.value)}
-              />
+              <textarea className="w-full rounded-lg border border-slate-200 px-3 py-2 text-sm resize-none outline-none focus:ring-2 focus:ring-green-400/40 placeholder:text-slate-400" rows={3} placeholder="Descrição para Google..." value={post.metaDescription} onChange={(e) => set("metaDescription", e.target.value)} />
               <span className="text-xs text-slate-400 text-right">{post.metaDescription.length}/160</span>
             </FormField>
-
             <FormField label="Resumo (excerpt)">
-              <textarea
-                className="w-full rounded-lg border border-slate-200 px-3 py-2 text-sm resize-none outline-none focus:ring-2 focus:ring-green-400/40 placeholder:text-slate-400"
-                rows={2}
-                placeholder="Trecho exibido nas listagens..."
-                value={post.excerpt}
-                onChange={(e) => set("excerpt", e.target.value)}
-              />
+              <textarea className="w-full rounded-lg border border-slate-200 px-3 py-2 text-sm resize-none outline-none focus:ring-2 focus:ring-green-400/40 placeholder:text-slate-400" rows={2} placeholder="Trecho exibido nas listagens..." value={post.excerpt} onChange={(e) => set("excerpt", e.target.value)} />
             </FormField>
           </div>
 
           {post.scheduledAt && (
             <div className="rounded-xl border border-blue-200 bg-blue-50 p-3 text-xs text-blue-700 flex items-center gap-2">
-              <Clock size={14} />
-              Agendado para {new Date(post.scheduledAt).toLocaleString("pt-BR")}
+              <Clock size={14} /> Agendado para {new Date(post.scheduledAt).toLocaleString("pt-BR")}
             </div>
           )}
-
           {post.publishedAt && post.status === "Publicado" && (
             <div className="rounded-xl border border-green-200 bg-green-50 p-3 text-xs text-green-700 flex items-center gap-2">
-              <CheckCircle2 size={14} />
-              Publicado em {new Date(post.publishedAt).toLocaleString("pt-BR")}
+              <CheckCircle2 size={14} /> Publicado em {new Date(post.publishedAt).toLocaleString("pt-BR")}
             </div>
           )}
         </div>
       </div>
 
-      {/* Schedule modal */}
       {scheduleModal && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 backdrop-blur-sm">
           <div className="bg-white rounded-2xl shadow-xl p-6 w-80 flex flex-col gap-4">
             <h3 className="font-semibold text-slate-900 flex items-center gap-2"><Calendar size={16} /> Agendar publicação</h3>
             <p className="text-sm text-slate-500">Selecione a data e hora em que o artigo será publicado automaticamente.</p>
-            <input
-              type="datetime-local"
-              className="w-full rounded-xl border border-slate-200 px-4 py-2.5 text-sm outline-none focus:ring-2 focus:ring-green-400/40"
-              value={scheduleDate}
-              min={new Date().toISOString().slice(0, 16)}
-              onChange={(e) => setScheduleDate(e.target.value)}
-            />
+            <input type="datetime-local" className="w-full rounded-xl border border-slate-200 px-4 py-2.5 text-sm outline-none focus:ring-2 focus:ring-green-400/40" value={scheduleDate} min={new Date().toISOString().slice(0, 16)} onChange={(e) => setScheduleDate(e.target.value)} />
             <div className="flex gap-2 justify-end">
               <Button variant="outline" size="sm" onClick={() => setScheduleModal(false)}>Cancelar</Button>
               <Button size="sm" onClick={handleScheduleConfirm} className="bg-blue-600 hover:bg-blue-700">Confirmar agendamento</Button>
@@ -654,15 +707,21 @@ function PostEditor({ initial, categories, onSaved, onCancel, onAddCategory }: P
 
 // ─── Post list ────────────────────────────────────────────────────────────────
 
-function PostList({ posts, onNew, onEdit, onDelete }: {
+function PostList({ posts, viewCounts, onNew, onEdit, onDelete }: {
   posts: Post[];
+  viewCounts: Map<string, number>;
   onNew: () => void;
   onEdit: (p: Post) => void;
   onDelete: (id: string) => void;
 }) {
   const [filter, setFilter] = useState<PostStatus | "Todos">("Todos");
   const filtered = filter === "Todos" ? posts : posts.filter((p) => p.status === filter);
-  const counts = { Todos: posts.length, Publicado: posts.filter((p) => p.status === "Publicado").length, Agendado: posts.filter((p) => p.status === "Agendado").length, Rascunho: posts.filter((p) => p.status === "Rascunho").length };
+  const counts = {
+    Todos: posts.length,
+    Publicado: posts.filter((p) => p.status === "Publicado").length,
+    Agendado: posts.filter((p) => p.status === "Agendado").length,
+    Rascunho: posts.filter((p) => p.status === "Rascunho").length,
+  };
 
   return (
     <Card className="rounded-xl border-slate-200 shadow-sm">
@@ -673,12 +732,7 @@ function PostList({ posts, onNew, onEdit, onDelete }: {
       <CardContent>
         <div className="flex gap-1 mb-4 border-b border-slate-100">
           {(["Todos", "Publicado", "Agendado", "Rascunho"] as const).map((tab) => (
-            <button
-              key={tab}
-              type="button"
-              onClick={() => setFilter(tab)}
-              className={`px-3 py-2 text-xs font-medium rounded-t-lg transition-colors ${filter === tab ? "bg-slate-900 text-white" : "text-slate-500 hover:text-slate-800"}`}
-            >
+            <button key={tab} type="button" onClick={() => setFilter(tab)} className={`px-3 py-2 text-xs font-medium rounded-t-lg transition-colors ${filter === tab ? "bg-slate-900 text-white" : "text-slate-500 hover:text-slate-800"}`}>
               {tab} <span className="ml-1 opacity-60">({counts[tab]})</span>
             </button>
           ))}
@@ -696,37 +750,54 @@ function PostList({ posts, onNew, onEdit, onDelete }: {
                 <TableHead>Título</TableHead>
                 <TableHead className="w-28">Categoria</TableHead>
                 <TableHead className="w-28">Status</TableHead>
-                <TableHead className="w-40">Data</TableHead>
-                <TableHead className="w-24 text-right">Ações</TableHead>
+                <TableHead className="w-28 text-right">Leituras</TableHead>
+                <TableHead className="w-36">Data</TableHead>
+                <TableHead className="w-20 text-right">Ações</TableHead>
               </TableRow>
             </TableHeader>
             <TableBody>
-              {filtered.map((post) => (
-                <TableRow key={post.id} className="group">
-                  <TableCell>
-                    <div>
-                      <p className="font-medium text-slate-900 text-sm">{post.title || <span className="italic text-slate-400">Sem título</span>}</p>
-                      {post.subtitle && <p className="text-xs text-slate-400 truncate max-w-xs">{post.subtitle}</p>}
-                      {post.slug && <p className="text-xs text-slate-300 font-mono">/{post.slug}</p>}
-                    </div>
-                  </TableCell>
-                  <TableCell className="text-xs text-slate-500">{post.category || "—"}</TableCell>
-                  <TableCell><StatusBadge status={post.status} /></TableCell>
-                  <TableCell className="text-xs text-slate-400">
-                    {post.status === "Publicado" && post.publishedAt ? new Date(post.publishedAt).toLocaleDateString("pt-BR") : post.status === "Agendado" && post.scheduledAt ? new Date(post.scheduledAt).toLocaleDateString("pt-BR") : new Date(post.updatedAt).toLocaleDateString("pt-BR")}
-                  </TableCell>
-                  <TableCell>
-                    <div className="flex items-center gap-1 justify-end">
-                      <button type="button" onClick={() => onEdit(post)} className="p-1.5 rounded-lg text-slate-400 hover:text-slate-700 hover:bg-slate-100 transition-colors" title="Editar">
-                        <Pencil size={14} />
-                      </button>
-                      <button type="button" onClick={() => { if (confirm(`Excluir "${post.title || "este artigo"}"?`)) onDelete(post.id); }} className="p-1.5 rounded-lg text-slate-400 hover:text-red-600 hover:bg-red-50 transition-colors" title="Excluir">
-                        <Trash2 size={14} />
-                      </button>
-                    </div>
-                  </TableCell>
-                </TableRow>
-              ))}
+              {filtered.map((post) => {
+                const views = viewCounts.get(post.id) ?? 0;
+                return (
+                  <TableRow key={post.id} className="group">
+                    <TableCell>
+                      <div>
+                        <p className="font-medium text-slate-900 text-sm">{post.title || <span className="italic text-slate-400">Sem título</span>}</p>
+                        {post.subtitle && <p className="text-xs text-slate-400 truncate max-w-xs">{post.subtitle}</p>}
+                        {post.slug && <p className="text-xs text-slate-300 font-mono">/{post.slug}</p>}
+                      </div>
+                    </TableCell>
+                    <TableCell className="text-xs text-slate-500">{post.category || "—"}</TableCell>
+                    <TableCell><StatusBadge status={post.status} /></TableCell>
+                    <TableCell className="text-right">
+                      {views > 0 ? (
+                        <span className="inline-flex items-center gap-1 text-xs font-semibold text-slate-700">
+                          <Eye size={11} className="text-slate-400" /> {views.toLocaleString("pt-BR")}
+                        </span>
+                      ) : (
+                        <span className="text-xs text-slate-300">—</span>
+                      )}
+                    </TableCell>
+                    <TableCell className="text-xs text-slate-400">
+                      {post.status === "Publicado" && post.publishedAt
+                        ? new Date(post.publishedAt).toLocaleDateString("pt-BR")
+                        : post.status === "Agendado" && post.scheduledAt
+                        ? new Date(post.scheduledAt).toLocaleDateString("pt-BR")
+                        : new Date(post.updatedAt).toLocaleDateString("pt-BR")}
+                    </TableCell>
+                    <TableCell>
+                      <div className="flex items-center gap-1 justify-end">
+                        <button type="button" onClick={() => onEdit(post)} className="p-1.5 rounded-lg text-slate-400 hover:text-slate-700 hover:bg-slate-100 transition-colors" title="Editar">
+                          <Pencil size={14} />
+                        </button>
+                        <button type="button" onClick={() => { if (confirm(`Excluir "${post.title || "este artigo"}"?`)) onDelete(post.id); }} className="p-1.5 rounded-lg text-slate-400 hover:text-red-600 hover:bg-red-50 transition-colors" title="Excluir">
+                          <Trash2 size={14} />
+                        </button>
+                      </div>
+                    </TableCell>
+                  </TableRow>
+                );
+              })}
             </TableBody>
           </Table>
         )}
@@ -741,16 +812,22 @@ type AdminView = { section: "home" } | { section: "tool"; tool: Exclude<ToolKey,
 
 export function AdminPage() {
   const { signOut, localAdmin } = useAuth();
-  const [settings, setSettings]   = useState<ToolSettings>(loadToolSettings);
-  const [posts, setPosts]         = useState<Post[]>(() => loadPosts());
+  const [settings, setSettings]     = useState<ToolSettings>(loadToolSettings);
+  const [posts, setPosts]           = useState<Post[]>(() => loadPosts());
   const [categories, setCategories] = useState<string[]>(() => loadCategories());
-  const [saved, setSaved]         = useState(false);
-  const [view, setView]           = useState<AdminView>({ section: "home" });
+  const [analytics, setAnalytics]   = useState<Analytics | null>(null);
+  const [saved, setSaved]           = useState(false);
+  const [view, setView]             = useState<AdminView>({ section: "home" });
+
+  const loadAnalytics = useCallback(() => {
+    apiFetchAnalytics().then(setAnalytics).catch(() => {});
+  }, []);
 
   useEffect(() => {
     apiFetchPosts().then(setPosts).catch(() => {});
     apiFetchCategories().then(setCategories).catch(() => {});
-  }, []);
+    loadAnalytics();
+  }, [loadAnalytics]);
 
   const handleSaveSettings = useCallback(() => {
     saveToolSettings(settings);
@@ -780,8 +857,13 @@ export function AdminPage() {
     apiDeleteCategory(name).catch(() => {});
   }
 
-  const pubCount    = posts.filter((p) => p.status === "Publicado").length;
-  const draftCount  = posts.filter((p) => p.status === "Rascunho").length;
+  // Build view counts map from analytics
+  const viewCounts = new Map<string, number>(
+    (analytics?.topPosts ?? []).map((p) => [p.postId, p.views])
+  );
+
+  const pubCount   = posts.filter((p) => p.status === "Publicado").length;
+  const draftCount = posts.filter((p) => p.status === "Rascunho").length;
 
   return (
     <AppLayout>
@@ -791,18 +873,20 @@ export function AdminPage() {
           {localAdmin && <Button variant="outline" size="sm" onClick={signOut} className="shrink-0">Sair</Button>}
         </div>
 
-        <div className="grid gap-4 md:grid-cols-3">
+        <div className="grid gap-4 md:grid-cols-4">
           <MetricCard label="Artigos publicados" value={String(pubCount)} helper={`${draftCount} rascunho${draftCount !== 1 ? "s" : ""}`} icon={Newspaper} />
-          <MetricCard label="Ferramentas" value="3" helper="Configuráveis" icon={Settings} />
-          <MetricCard label="Categorias" value={String(categories.length)} helper="CMS Aprenda" icon={Tags} />
+          <MetricCard label="Leituras hoje" value={String(analytics?.viewsToday ?? "—")} helper="Artigos acessados" icon={Eye} />
+          <MetricCard label="Leituras (7 dias)" value={String(analytics?.viewsLast7Days ?? "—")} helper="Últimos 7 dias" icon={BarChart2} />
+          <MetricCard label="Total de leituras" value={String(analytics?.totalViews ?? "—")} helper="Histórico completo" icon={TrendingUp} />
         </div>
 
-        <div className="mt-10">
+        <div className="mt-10 space-y-6">
 
-          {/* ── HOME ─────────────────────────────────── */}
           {view.section === "home" && (
             <>
-              <h2 className="text-lg font-bold text-slate-900 mb-4">Ferramentas</h2>
+              <AnalyticsPanel analytics={analytics} onRefresh={loadAnalytics} />
+
+              <h2 className="text-lg font-bold text-slate-900">Ferramentas</h2>
               <div className="grid gap-4 md:grid-cols-3">
                 {TOOL_CARDS.map((tool) => (
                   <Card key={tool.title} className={`rounded-xl border-slate-200 shadow-sm transition-shadow ${tool.configured ? "hover:shadow-md cursor-pointer" : "opacity-60"}`} onClick={() => tool.key && setView({ section: "tool", tool: tool.key })}>
@@ -819,26 +903,18 @@ export function AdminPage() {
                 ))}
               </div>
 
-              <div className="mt-8">
-                <CategoryManager
-                  categories={categories}
-                  onAdd={handleAddCategory}
-                  onRemove={handleRemoveCategory}
-                />
-              </div>
+              <CategoryManager categories={categories} onAdd={handleAddCategory} onRemove={handleRemoveCategory} />
 
-              <div className="mt-6">
-                <PostList
-                  posts={posts}
-                  onNew={() => setView({ section: "cms-edit", post: newPost() })}
-                  onEdit={(p) => setView({ section: "cms-edit", post: p })}
-                  onDelete={handleDeletePost}
-                />
-              </div>
+              <PostList
+                posts={posts}
+                viewCounts={viewCounts}
+                onNew={() => setView({ section: "cms-edit", post: newPost() })}
+                onEdit={(p) => setView({ section: "cms-edit", post: p })}
+                onDelete={handleDeletePost}
+              />
             </>
           )}
 
-          {/* ── TOOL CONFIG ──────────────────────────── */}
           {view.section === "tool" && (
             <Card className="rounded-xl border-slate-200 shadow-sm overflow-hidden">
               <div className="flex items-center gap-3 border-b border-slate-100 px-6 py-4 bg-white">
@@ -853,7 +929,6 @@ export function AdminPage() {
             </Card>
           )}
 
-          {/* ── CMS EDITOR ───────────────────────────── */}
           {view.section === "cms-edit" && (
             <Card className="rounded-xl border-slate-200 shadow-sm overflow-hidden">
               <PostEditor
@@ -865,7 +940,6 @@ export function AdminPage() {
               />
             </Card>
           )}
-
         </div>
       </PageContainer>
     </AppLayout>

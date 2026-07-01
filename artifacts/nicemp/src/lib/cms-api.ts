@@ -1,4 +1,4 @@
-import type { Post, PostStatus } from "./cms-storage";
+import type { Post } from "./cms-storage";
 
 const BASE = "/api/cms";
 
@@ -36,4 +36,31 @@ export async function apiAddCategory(name: string): Promise<void> {
 
 export async function apiDeleteCategory(name: string): Promise<void> {
   await request<void>(`/categories/${encodeURIComponent(name)}`, { method: "DELETE" });
+}
+
+// ─── Analytics ────────────────────────────────────────────────────────────────
+
+export async function apiRecordView(postId: string): Promise<void> {
+  await request<void>(`/posts/${encodeURIComponent(postId)}/view`, { method: "POST" });
+}
+
+export interface PostAnalytics {
+  postId: string;
+  title: string;
+  slug: string;
+  views: number;
+  viewsToday: number;
+  viewsLast7Days: number;
+}
+
+export interface Analytics {
+  totalViews: number;
+  viewsToday: number;
+  viewsLast7Days: number;
+  topPosts: PostAnalytics[];
+  viewsByDay: { date: string; views: number }[];
+}
+
+export async function apiFetchAnalytics(): Promise<Analytics> {
+  return request<Analytics>("/analytics");
 }

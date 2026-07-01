@@ -4,7 +4,7 @@ import { Footer } from "@/components/Footer";
 import { Header } from "@/components/Header";
 import { Badge } from "@/components/ui/badge";
 import { loadPosts, getPostBySlug, type Post } from "@/lib/cms-storage";
-import { apiFetchPosts } from "@/lib/cms-api";
+import { apiFetchPosts, apiRecordView } from "@/lib/cms-api";
 import { renderMarkdown } from "@/lib/markdown";
 import { Calendar, Clock, ArrowLeft, Eye } from "lucide-react";
 
@@ -35,6 +35,14 @@ export function ArticlePage() {
           setRelated(
             posts.filter((p) => p.status === "Publicado" && p.category === resolved.category && p.id !== resolved.id).slice(0, 3)
           );
+          // Track view once per session (skip for preview)
+          if (!isPreview) {
+            const sessionKey = `nicemp_viewed_${resolved.id}`;
+            if (!sessionStorage.getItem(sessionKey)) {
+              sessionStorage.setItem(sessionKey, "1");
+              apiRecordView(resolved.id).catch(() => {});
+            }
+          }
         }
       })
       .catch(() => {});
