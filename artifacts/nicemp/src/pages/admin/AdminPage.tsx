@@ -670,7 +670,7 @@ export function AdminPage() {
         <div className="grid gap-4 md:grid-cols-3">
           <MetricCard label="Artigos publicados" value={String(pubCount)} helper={`${draftCount} rascunho${draftCount !== 1 ? "s" : ""}`} icon={Newspaper} />
           <MetricCard label="Ferramentas" value="3" helper="Configuráveis" icon={Settings} />
-          <MetricCard label="Categorias" value={String(categories.length)} helper="CMS Aprenda" icon={Tags} />
+          <MetricCard label="Categorias" value={String(loadCategories().length)} helper="CMS Aprenda" icon={Tags} />
         </div>
 
         <div className="mt-10">
