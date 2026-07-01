@@ -3,7 +3,6 @@ previewPath = "/"
 title = "Nicemp Ferramentas"
 version = "1.0.0"
 id = "artifacts/nicemp"
-router = "path"
 
 [[integratedSkills]]
 name = "react-vite"
