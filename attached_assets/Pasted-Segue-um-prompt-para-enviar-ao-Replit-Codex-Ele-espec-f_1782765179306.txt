@@ -1,0 +1,142 @@
+Segue um prompt para enviar ao Replit/Codex. Ele é específico e orientado à implementação, evitando soluções superficiais.
+Quero refatorar completamente a área Configurações das Ferramentas. O objetivo é que ela deixe de ser apenas visual e passe a controlar efetivamente todas as calculadoras do site.
+Objetivo
+Todas as calculadoras devem buscar seus parâmetros do banco de dados através desta tela de configurações. Nenhum valor de cálculo deve permanecer fixo no código.
+1. Simples Nacional
+Hoje existe apenas a lista "Anexo I", "Anexo II"... mas ela não faz nada.
+Quero que, ao expandir cada anexo, exista uma tabela completa editável.
+Cada faixa deve possuir:
+Receita Bruta Inicial
+Receita Bruta Final
+Alíquota Nominal (%)
+Parcela a Deduzir (R$)
+Exemplo:
+Anexo I
+Faixa
+Receita Inicial
+Receita Final
+Alíquota
+Parcela Deduzir
+1
+0
+180000
+4%
+0
+2
+180000,01
+360000
+7,3%
+5940
+...
+...
+...
+...
+...
+Os dados devem ser totalmente editáveis.
+Ao clicar em Salvar Configurações, gravar no banco.
+A Calculadora do Simples Nacional deve deixar de usar valores fixos e passar a buscar exatamente esses dados.
+A fórmula continua sendo:
+Alíquota Efetiva = ((RBT12 × Alíquota Nominal) − Parcela Deduzir) ÷ RBT12
+Ou seja:
+A calculadora deve ler o anexo escolhido.
+Ler todas as faixas cadastradas.
+Descobrir automaticamente em qual faixa o faturamento se encontra.
+Usar os valores cadastrados pelo administrador.
+Nada deve permanecer hardcoded.
+2. Estrutura do banco
+Criar uma tabela específica para armazenar as faixas.
+Exemplo:
+simples_nacional_faixas
+id
+anexo
+faixa
+receita_inicial
+receita_final
+aliquota
+parcela_deduzir
+created_at
+updated_at
+A interface deve editar diretamente essa tabela.
+3. Restaurar padrões
+O botão Restaurar Padrões deve recarregar as tabelas oficiais atuais do Simples Nacional.
+Não apenas limpar campos.
+4. Calculadora de Markup
+Hoje apenas existem exemplos.
+Quero separar claramente:
+Configuração
+Exemplos exibidos ao usuário.
+Fórmula
+Quero poder configurar:
+Margem padrão (%)
+Despesas padrão (%)
+Número de casas decimais
+Formato de moeda
+Valores mínimos
+Valores máximos
+Esses parâmetros devem ser buscados pela calculadora.
+5. Calculadora ROI
+Hoje apenas existem exemplos.
+Também quero separar:
+Exemplos
+Configurações
+Configurações desejadas:
+Investimento mínimo
+Investimento máximo
+Casas decimais
+Exibir ROI %
+Exibir Lucro
+Exibir Múltiplo do investimento
+Esses parâmetros devem ser carregados dinamicamente.
+6. Sistema de parâmetros
+Criar um sistema genérico.
+Todas as ferramentas futuras deverão buscar seus parâmetros nele.
+Exemplo:
+tool_settings
+id
+tool
+key
+value
+description
+Assim não precisarei alterar código quando criar novas ferramentas.
+7. Painel administrativo
+Melhorar totalmente essa página.
+Quero um painel realmente administrativo.
+Cada ferramenta deve possuir um card.
+Ao clicar, abrir sua tela de configurações.
+Não quero dezenas de campos na mesma página.
+Exemplo:
+Ferramentas
+Calculadora ROI
+Calculadora Markup
+Simples Nacional
+DRE
+Capital de Giro
+Fluxo de Caixa
+Importação
+IRRF
+MEI x Simples
+Cada uma abre sua própria configuração.
+8. Código
+Eliminar qualquer valor fixo relacionado às ferramentas.
+Todo cálculo deve buscar os dados cadastrados pelo administrador.
+Se amanhã eu alterar uma alíquota ou uma faixa, a calculadora deve refletir a alteração imediatamente, sem necessidade de alterar código.
+9. Melhorias na Calculadora do Simples Nacional
+Implementar integralmente o que foi definido anteriormente:
+Cálculo em tempo real, sem botão "Calcular".
+Seleção de Estado.
+Seleção de Tipo de Atividade.
+Seleção de Anexo I a V.
+Receita Bruta dos últimos 12 meses (RBT12).
+Receita do mês atual.
+Cálculo da Alíquota Efetiva.
+Cálculo do valor estimado do DAS.
+Exibição da faixa utilizada.
+Exibição da alíquota nominal.
+Exibição da parcela a deduzir.
+Exibição da fórmula aplicada.
+Exibição do passo a passo do cálculo.
+Validação completa para todas as seis faixas de todos os anexos.
+Layout responsivo.
+SEO preservado.
+Todos os valores utilizados devem vir exclusivamente do banco de dados configurado pelo painel administrativo.
+Não utilize valores hardcoded em nenhuma parte da calculadora. O sistema deve ser totalmente orientado a dados cadastrados pelo administrador.
