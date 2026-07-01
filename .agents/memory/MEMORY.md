@@ -1,2 +1,0 @@
-- [CMS persistence](cms-persistence.md) — posts/categories stored in PostgreSQL via API server; localStorage is the fallback/cache.
-- [API proxy](api-proxy.md) — Vite dev proxies /api → localhost:8080; both workflows must run together.
