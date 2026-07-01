@@ -75,3 +75,8 @@ timeoutMs = 20000
 
 [nix]
 channel = "stable-25_05"
+
+[userenv]
+
+[userenv.shared]
+GITHUB_TOKEN = "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"
